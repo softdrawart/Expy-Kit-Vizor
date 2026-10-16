@@ -8,6 +8,7 @@ def _reload_modules():
     from . import preset_handler
     from . import properties
     from . import ui
+    from . import utils
 
     from .rig_mapping import bone_mapping
 
@@ -17,6 +18,7 @@ def _reload_modules():
     reload(preset_handler)
     reload(properties)
     reload(ui)
+    reload(utils)
     reload(bone_mapping)
 
 _DEV_MODE = bool(os.environ.get('BLENDER_DEV_MODE', 0))

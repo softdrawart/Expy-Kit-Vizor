@@ -1,6 +1,6 @@
 from math import pi
 import os
-
+from .utils import get_all_fcurves
 import bpy
 from bpy.props import BoolProperty
 from bpy.props import EnumProperty
@@ -380,7 +380,7 @@ class ConvertBoneNaming(bpy.types.Operator):
                                                                 'bones["{0}"'.format(trg_name))
 
             for action in actions:
-                for fc in action.fcurves:
+                for fc in get_all_fcurves(action):
                     try:
                         track_bone = fc.data_path.split('"')[1]
                     except IndexError:
@@ -1309,7 +1309,7 @@ def mute_fcurves(obj, channel_name): # :Object, :str
     if not action:
         return
 
-    for fc in action.fcurves:
+    for fc in get_all_fcurves(action):
         if fc.data_path == channel_name:
             fc.mute = True
 
@@ -1910,24 +1910,29 @@ class ConstrainToArmature(bpy.types.Operator):
                     return {'FINISHED'}
 
             if fit_scale:
-                ob_height = matmul(ob.matrix_world, ob.pose.bones[getattr(src_skeleton.spine, self.fit_target_scale)].bone.head_local)
-                height_ratio = ob_height[2] / trg_height[2]
+                # 1. Safely get the bone name, defaulting to an empty string if missing
+                bone_name = getattr(src_skeleton.spine, self.fit_target_scale, "")
+                
+                # 2. Only proceed if the bone name isn't empty AND it actually exists in the armature
+                if bone_name and bone_name in ob.pose.bones:
+                    ob_height = matmul(ob.matrix_world, ob.pose.bones[bone_name].bone.head_local)
+                    height_ratio = ob_height[2] / trg_height[2]
 
-                mute_fcurves(trg_ob, 'scale')
-                trg_ob.scale *= height_ratio
-                limit_scale(trg_ob)
+                    mute_fcurves(trg_ob, 'scale')
+                    trg_ob.scale *= height_ratio
+                    limit_scale(trg_ob)
 
-                if self.adjust_location:
-                    # scale location animation to avoid offset
-                    if trg_ob.animation_data and trg_ob.animation_data.action:
-                        for fc in trg_ob.animation_data.action.fcurves:
-                            data_path = fc.data_path
+                    if self.adjust_location:
+                        # scale location animation to avoid offset
+                        if trg_ob.animation_data and trg_ob.animation_data.action:
+                            for fc in get_all_fcurves(trg_ob.animation_data.action):
+                                data_path = fc.data_path
 
-                            if not data_path.endswith('location'):
-                                continue
+                                if not data_path.endswith('location'):
+                                    continue
 
-                            for kf in fc.keyframe_points:
-                                kf.co[1] /= height_ratio
+                                for kf in fc.keyframe_points:
+                                    kf.co[1] /= height_ratio
 
             bone_names_map = src_skeleton.conversion_map(trg_skeleton)
             def_skeleton = preset_handler.get_preset_skel(src_settings.deform_preset)
@@ -2241,19 +2246,6 @@ class ConstrainToArmature(bpy.types.Operator):
 
         return {'FINISHED'}
 
-
-def get_all_fcurves(action):
-    try:
-        layers = action.layers
-    except AttributeError:
-        for fc in action.fcurves:
-            yield fc
-    else:
-        for l in layers:
-            for s in l.strips:
-                for c in s.channelbags:
-                    for fc in c.fcurves:
-                        yield fc
 
 def validate_action(action, path_resolve): # :Action, :callable
     for fc in get_all_fcurves(action):
